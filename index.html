@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Journaling File System Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #232836;
+    --border2: #2e3547;
+    --accent: #00e5ff;
+    --accent2: #7b5ea7;
+    --green: #39ff8a;
+    --red: #ff4466;
+    --yellow: #ffcc00;
+    --orange: #ff8c42;
+    --text: #e8ecf4;
+    --muted: #5a6580;
+    --journal: #c084fc;
+    --commit: #34d399;
+    --crash: #f87171;
+    --recover: #60a5fa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: linear-gradient(135deg, #0d1117 0%, #12182b 100%);
+    border-bottom: 1px solid var(--border2);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 24px rgba(0,229,255,0.07);
+  }
+  .logo {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(90deg, var(--accent), var(--journal));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  header p { color: var(--muted); font-size: 0.72rem; margin-top: 2px; }
+  .header-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .api-status {
+    font-size: 0.68rem; padding: 4px 10px; border-radius: 99px;
+    border: 1px solid var(--green); color: var(--green);
+    background: rgba(57,255,138,0.06);
+  }
+
+  /* ── LAYOUT ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr 340px;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    padding: 20px 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ── PANEL ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .panel-header {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-header .icon { font-size: 16px; }
+  .panel-header h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent);
+  }
+  .panel-header .badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: rgba(0,229,255,0.1);
+    color: var(--accent);
+    border: 1px solid rgba(0,229,255,0.25);
+  }
+  .panel-body { padding: 18px; }
+
+  /* ── CONTROLS ── */
+  .controls { grid-column: 1 / 2; }
+  label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+    margin-top: 14px;
+  }
+  label:first-child { margin-top: 0; }
+  input, textarea, select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0,229,255,0.12);
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  select { cursor: pointer; }
+  select option { background: var(--surface2); }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .btn {
+    flex: 1;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all .2s;
+    text-transform: uppercase;
+  }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), #0099bb); color: #000; }
+  .btn-primary:hover { filter: brightness(1.15); transform: translateY(-1px); }
+  .btn-danger  { background: linear-gradient(135deg, var(--red), #cc0033); color: #fff; }
+  .btn-danger:hover  { filter: brightness(1.2); transform: translateY(-1px); }
+  .btn-warn    { background: linear-gradient(135deg, var(--yellow), #cc9900); color: #000; }
+  .btn-warn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+  .btn-recover { background: linear-gradient(135deg, var(--recover), #1d4ed8); color: #fff; }
+  .btn-recover:hover { filter: brightness(1.2); transform: translateY(-1px); }
+  .btn-reset   { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+  .btn-reset:hover { color: var(--red); border-color: var(--red); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 18px 0 4px;
+  }
+  .section-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ── FILE LIST ── */
+  .file-list { list-style: none; }
+  .file-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all .15s;
+    margin-bottom: 4px;
+  }
+  .file-item:hover { background: var(--surface2); border-color: var(--border2); }
+  .file-item.selected { background: rgba(0,229,255,0.07); border-color: var(--accent); }
+  .file-icon { font-size: 16px; }
+  .file-name { font-size: 0.82rem; font-weight: 600; flex: 1; }
+  .file-block {
+    font-size: 0.65rem; color: var(--muted);
+    background: var(--surface2); padding: 2px 6px; border-radius: 4px;
+  }
+  .file-size { font-size: 0.65rem; color: var(--muted); }
+  .no-files { color: var(--muted); font-size: 0.78rem; text-align: center; padding: 24px; }
+
+  /* ── DISK BLOCKS ── */
+  .disk-panel { grid-column: 2 / 3; }
+  .blocks-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .block {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-size: 0.68rem;
+    border: 2px solid transparent;
+    transition: all .25s;
+    padding: 4px;
+    text-align: center;
+    cursor: default;
+    position: relative;
+    overflow: hidden;
+  }
+  .block.free {
+    background: var(--surface2);
+    border-color: var(--border);
+    color: var(--muted);
+  }
+  .block.used {
+    background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(123,94,167,0.12));
+    border-color: var(--accent);
+    color: var(--text);
+    animation: blockPulse 0.5s ease;
+  }
+  @keyframes blockPulse {
+    0% { transform: scale(0.9); opacity: 0.3; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .block-num {
+    position: absolute; top: 4px; left: 6px;
+    font-size: 0.58rem; color: var(--muted); font-weight: 600;
+  }
+  .block-name { font-size: 0.65rem; font-weight: 700; color: var(--accent); word-break: break-all; }
+  .block-preview { font-size: 0.58rem; color: var(--muted); margin-top: 2px; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .disk-legend {
+    display: flex; gap: 16px; margin-top: 14px;
+    font-size: 0.68rem; color: var(--muted);
+  }
+  .disk-legend span { display: flex; align-items: center; gap: 5px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.free-dot { background: var(--border2); }
+  .dot.used-dot { background: var(--accent); }
+
+  /* ── JOURNAL ── */
+  .journal-panel { grid-column: 3 / 4; grid-row: 1 / 3; }
+  .journal-list { list-style: none; max-height: 520px; overflow-y: auto; }
+  .journal-list::-webkit-scrollbar { width: 4px; }
+  .journal-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .journal-entry {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: all .2s;
+  }
+  .je-header {
+    padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.72rem;
+  }
+  .je-tid {
+    font-size: 0.65rem;
+    background: rgba(255,255,255,0.06);
+    padding: 2px 6px; border-radius: 4px; font-weight: 600;
+  }
+  .je-op { font-weight: 700; }
+  .je-file { color: var(--accent); flex: 1; }
+  .je-state {
+    font-size: 0.6rem; padding: 2px 7px; border-radius: 99px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .state-BEGIN       { background: rgba(255,204,0,0.15); color: var(--yellow); border: 1px solid rgba(255,204,0,0.3); }
+  .state-WRITE_DATA  { background: rgba(96,165,250,0.15); color: var(--recover); border: 1px solid rgba(96,165,250,0.3); }
+  .state-WRITE_METADATA { background: rgba(255,140,66,0.15); color: var(--orange); border: 1px solid rgba(255,140,66,0.3); }
+  .state-COMMIT      { background: rgba(52,211,153,0.15); color: var(--commit); border: 1px solid rgba(52,211,153,0.3); }
+  .state-CHECKPOINT  { background: rgba(0,229,255,0.1); color: var(--accent); border: 1px solid rgba(0,229,255,0.25); }
+  .je-body { padding: 8px 12px; font-size: 0.68rem; color: var(--muted); border-top: 1px solid var(--border); background: rgba(0,0,0,0.2); }
+
+  .empty-journal { text-align: center; color: var(--muted); padding: 32px; font-size: 0.78rem; }
+
+  /* ── TRANSACTION STEPS ── */
+  .steps-panel { grid-column: 1 / 3; }
+  .steps-container { display: flex; gap: 0; align-items: flex-start; flex-wrap: wrap; }
+  .step {
+    flex: 1; min-width: 120px;
+    padding: 12px;
+    border-right: 1px solid var(--border);
+    position: relative;
+    animation: stepIn 0.3s ease forwards;
+    opacity: 0;
+  }
+  .step:last-child { border-right: none; }
+  @keyframes stepIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .step-phase {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .step-desc { font-size: 0.7rem; color: var(--muted); line-height: 1.5; }
+  .phase-BEGIN       { color: var(--yellow); }
+  .phase-WRITE_DATA  { color: var(--recover); }
+  .phase-WRITE_METADATA { color: var(--orange); }
+  .phase-COMMIT      { color: var(--commit); }
+  .phase-CHECKPOINT  { color: var(--accent); }
+
+  .crash-banner {
+    background: linear-gradient(135deg, rgba(255,68,102,0.15), rgba(255,68,102,0.05));
+    border: 1px solid rgba(255,68,102,0.4);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 0.75rem;
+    color: var(--crash);
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .crash-hint {
+    background: rgba(96,165,250,0.08);
+    border: 1px solid rgba(96,165,250,0.25);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    color: var(--recover);
+    margin-top: 8px;
+  }
+
+  .no-steps { color: var(--muted); font-size: 0.78rem; padding: 24px; text-align: center; }
+
+  /* ── EVENT LOG ── */
+  .log-panel { grid-column: 1 / 3; }
+  .log-list { max-height: 200px; overflow-y: auto; }
+  .log-list::-webkit-scrollbar { width: 4px; }
+  .log-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .log-line {
+    display: flex; gap: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 0.7rem;
+    animation: fadeIn .2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  .log-time { color: var(--muted); min-width: 56px; }
+  .log-msg { flex: 1; }
+  .log-info    .log-msg { color: var(--text); }
+  .log-journal .log-msg { color: var(--journal); }
+  .log-commit  .log-msg { color: var(--commit); }
+  .log-crash   .log-msg { color: var(--crash); }
+  .log-recover .log-msg { color: var(--recover); }
+  .log-success .log-msg { color: var(--green); }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 0.78rem;
+    color: var(--text);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all .3s cubic-bezier(.34,1.56,.64,1);
+    z-index: 999;
+    max-width: 360px;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.error { border-color: var(--red); color: var(--red); }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.crash { border-color: var(--crash); color: var(--crash); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr 1fr; }
+    .journal-panel { grid-column: 1 / 3; grid-row: auto; }
+    .steps-panel { grid-column: 1 / 3; }
+    .log-panel { grid-column: 1 / 3; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">💾</div>
+  <div>
+    <h1>Journaling File System Simulator</h1>
+    <p>OS Project — Crash Recovery & Data Consistency Demo</p>
+  </div>
+  <div class="header-right">
+    <div class="api-status" id="apiStatus">⬤ Connecting…</div>
+    <button class="btn btn-reset" style="flex:0;padding:8px 14px;font-size:0.72rem" onclick="resetFS()">Reset FS</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── CONTROLS ── -->
+  <div class="panel controls">
+    <div class="panel-header">
+      <span class="icon">⚙️</span>
+      <h2>Operations</h2>
+    </div>
+    <div class="panel-body">
+
+      <div class="section-label">Create File</div>
+      <label>Filename</label>
+      <input type="text" id="createName" placeholder="e.g. notes.txt" />
+      <label>Content</label>
+      <textarea id="createContent" placeholder="File content…">Hello, World!</textarea>
+      <label>Simulate Crash After</label>
+      <select id="createCrash">
+        <option value="">No Crash (normal write)</option>
+        <option value="begin">After BEGIN</option>
+        <option value="data">After WRITE_DATA</option>
+        <option value="metadata">After WRITE_METADATA</option>
+        <option value="commit">After COMMIT</option>
+      </select>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="createFile()">📝 Create File</button>
+        <button class="btn btn-danger" onclick="createFile(true)">💥 Crash Write</button>
+      </div>
+
+      <hr class="section-divider"/>
+      <div class="section-label">Delete File</div>
+      <label>Select File</label>
+      <select id="deleteSelect"><option value="">— select file —</option></select>
+      <label>Simulate Crash After</label>
+      <select id="deleteCrash">
+        <option value="">No Crash</option>
+        <option value="begin">After BEGIN</option>
+        <option value="metadata">After WRITE_METADATA</option>
+        <option value="commit">After COMMIT</option>
+      </select>
+      <div class="btn-row">
+        <button class="btn btn-danger" onclick="deleteFile()">🗑️ Delete File</button>
+      </div>
+
+      <hr class="section-divider"/>
+      <div class="section-label">Recovery</div>
+      <button class="btn btn-recover" style="width:100%" onclick="recoverFS()">🔄 Run Crash Recovery</button>
+    </div>
+  </div>
+
+  <!-- ── DISK BLOCKS ── -->
+  <div class="panel disk-panel">
+    <div class="panel-header">
+      <span class="icon">📀</span>
+      <h2>Disk Blocks</h2>
+      <span class="badge" id="blockCount">0/16 used</span>
+    </div>
+    <div class="panel-body">
+      <div class="blocks-grid" id="blocksGrid"></div>
+      <div class="disk-legend">
+        <span><div class="dot free-dot"></div> Free block</span>
+        <span><div class="dot used-dot"></div> Used block</span>
+      </div>
+
+      <hr class="section-divider" style="margin-top:18px"/>
+      <div class="section-label">Inode Table</div>
+      <ul class="file-list" id="fileList">
+        <li class="no-files">No files yet</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── JOURNAL ── -->
+  <div class="panel journal-panel">
+    <div class="panel-header">
+      <span class="icon">📓</span>
+      <h2>Journal Log</h2>
+      <span class="badge" id="journalCount">0 entries</span>
+    </div>
+    <div class="panel-body" style="padding:14px">
+      <div class="section-label" style="margin-bottom:8px">Active / Pending</div>
+      <ul class="journal-list" id="journalList">
+        <li class="empty-journal">Journal is empty</li>
+      </ul>
+      <div class="section-label" style="margin-top:14px;margin-bottom:8px">Committed (Checkpointed)</div>
+      <ul class="journal-list" id="committedList">
+        <li class="empty-journal" style="padding:12px">No checkpoints yet</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── TRANSACTION STEPS ── -->
+  <div class="panel steps-panel">
+    <div class="panel-header">
+      <span class="icon">🔢</span>
+      <h2>Transaction Steps</h2>
+      <span class="badge">Last Operation</span>
+    </div>
+    <div class="panel-body" id="stepsBody">
+      <div class="no-steps">Perform an operation to see journaling steps…</div>
+    </div>
+  </div>
+
+  <!-- ── EVENT LOG ── -->
+  <div class="panel log-panel">
+    <div class="panel-header">
+      <span class="icon">📋</span>
+      <h2>Event Log</h2>
+    </div>
+    <div class="panel-body" style="padding:12px 16px">
+      <div class="log-list" id="logList"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = "http://localhost:5000/api";
+let state = {};
+
+// ── Fetch state and re-render ──
+async function loadState() {
+  try {
+    const r = await fetch(`${API}/state`);
+    state = await r.json();
+    renderAll();
+    document.getElementById("apiStatus").textContent = "⬤ Connected";
+    document.getElementById("apiStatus").style.color = "var(--green)";
+    document.getElementById("apiStatus").style.borderColor = "var(--green)";
+  } catch(e) {
+    document.getElementById("apiStatus").textContent = "⬤ Offline";
+    document.getElementById("apiStatus").style.color = "var(--red)";
+    document.getElementById("apiStatus").style.borderColor = "var(--red)";
+  }
+}
+
+function renderAll() {
+  renderBlocks();
+  renderFiles();
+  renderJournal();
+  renderLog();
+}
+
+function renderBlocks() {
+  const grid = document.getElementById("blocksGrid");
+  const blocks = state.disk_blocks || {};
+  let used = 0;
+  grid.innerHTML = "";
+  for (let i = 1; i <= 16; i++) {
+    const b = blocks[String(i)];
+    const div = document.createElement("div");
+    div.className = b ? "block used" : "block free";
+    if (b) {
+      used++;
+      div.innerHTML = `<span class="block-num">#${i}</span>
+        <div class="block-name">${escHtml(b.filename)}</div>
+        <div class="block-preview">${escHtml((b.content||"").substring(0,12))}${b.content&&b.content.length>12?"…":""}</div>`;
+    } else {
+      div.innerHTML = `<span class="block-num">#${i}</span><div style="color:var(--border2);font-size:1.2rem">▫</div>`;
+    }
+    grid.appendChild(div);
+  }
+  document.getElementById("blockCount").textContent = `${used}/16 used`;
+}
+
+function renderFiles() {
+  const inodes = state.inode_table || {};
+  const list = document.getElementById("fileList");
+  const sel  = document.getElementById("deleteSelect");
+  sel.innerHTML = "<option value=''>— select file —</option>";
+  const names = Object.keys(inodes);
+  if (!names.length) {
+    list.innerHTML = "<li class='no-files'>No files yet</li>";
+    return;
+  }
+  list.innerHTML = "";
+  names.forEach(fn => {
+    const info = inodes[fn];
+    const li = document.createElement("li");
+    li.className = "file-item";
+    li.innerHTML = `<span class="file-icon">📄</span>
+      <span class="file-name">${escHtml(fn)}</span>
+      <span class="file-block">blk ${info.block}</span>
+      <span class="file-size">${info.size}B</span>`;
+    list.appendChild(li);
+    const opt = document.createElement("option");
+    opt.value = fn; opt.textContent = fn;
+    sel.appendChild(opt);
+  });
+}
+
+function renderJournal() {
+  const jList = document.getElementById("journalList");
+  const cList = document.getElementById("committedList");
+  const entries = state.journal || [];
+  const committed = state.journal_committed || [];
+
+  document.getElementById("journalCount").textContent =
+    `${entries.length + committed.length} entries`;
+
+  jList.innerHTML = entries.length ? "" : "<li class='empty-journal'>No pending transactions</li>";
+  entries.forEach(e => jList.appendChild(makeJournalItem(e)));
+
+  cList.innerHTML = committed.length ? "" : "<li class='empty-journal' style='padding:12px'>No checkpoints yet</li>";
+  [...committed].reverse().slice(0,8).forEach(e => cList.appendChild(makeJournalItem(e, true)));
+}
+
+function makeJournalItem(e, dim=false) {
+  const li = document.createElement("li");
+  li.className = "journal-entry";
+  if (dim) li.style.opacity = "0.55";
+  li.innerHTML = `
+    <div class="je-header">
+      <span class="je-tid">TXN-${e.tid}</span>
+      <span class="je-op">${e.operation}</span>
+      <span class="je-file">${escHtml(e.filename)}</span>
+      <span class="je-state state-${e.state}">${e.state}</span>
+    </div>
+    <div class="je-body">blk:${e.block} · ${e.timestamp}</div>`;
+  return li;
+}
+
+function renderLog() {
+  const logs = state.log || [];
+  const list = document.getElementById("logList");
+  list.innerHTML = "";
+  logs.slice().reverse().forEach(l => {
+    const div = document.createElement("div");
+    div.className = `log-line log-${l.level}`;
+    div.innerHTML = `<span class="log-time">${l.time}</span><span class="log-msg">${escHtml(l.msg)}</span>`;
+    list.appendChild(div);
+  });
+}
+
+function renderSteps(steps, crashed, hint) {
+  const body = document.getElementById("stepsBody");
+  if (!steps || !steps.length) { body.innerHTML = "<div class='no-steps'>No steps to show</div>"; return; }
+
+  let html = `<div class="steps-container">`;
+  steps.forEach((s, i) => {
+    html += `<div class="step" style="animation-delay:${i*0.08}s">
+      <div class="step-phase phase-${s.phase}">${s.phase.replace("_"," ")}</div>
+      <div class="step-desc">${escHtml(s.desc)}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  if (crashed) {
+    html += `<div class="crash-banner">💥 <div><strong>CRASH SIMULATED</strong><br>System crashed mid-transaction. Disk may be inconsistent without journaling.</div></div>`;
+    if (hint) html += `<div class="crash-hint">🔄 <strong>Recovery:</strong> ${escHtml(hint)}</div>`;
+  }
+  body.innerHTML = html;
+}
+
+// ── Operations ──
+async function createFile(forceCrash=false) {
+  const name = document.getElementById("createName").value.trim();
+  const content = document.getElementById("createContent").value.trim();
+  const crashSel = document.getElementById("createCrash").value;
+  const crash_after = forceCrash ? (crashSel || "commit") : crashSel;
+
+  if (!name) { showToast("Enter a filename", "error"); return; }
+
+  try {
+    const r = await fetch(`${API}/create_file`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ filename: name, content, crash_after })
+    });
+    const d = await r.json();
+    if (d.error) { showToast(d.error, "error"); return; }
+    renderSteps(d.steps, d.crashed, d.recover_hint);
+    if (d.crashed) showToast(`💥 Crash after ${crash_after.toUpperCase()}`, "crash");
+    else showToast(`✅ '${name}' created on block ${d.block}`, "success");
+    await loadState();
+  } catch(e) { showToast("Backend offline", "error"); }
+}
+
+async function deleteFile() {
+  const name = document.getElementById("deleteSelect").value;
+  const crash_after = document.getElementById("deleteCrash").value;
+  if (!name) { showToast("Select a file to delete", "error"); return; }
+
+  try {
+    const r = await fetch(`${API}/delete_file`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ filename: name, crash_after })
+    });
+    const d = await r.json();
+    if (d.error) { showToast(d.error, "error"); return; }
+    renderSteps(d.steps, d.crashed, d.recover_hint);
+    if (d.crashed) showToast(`💥 Crash during delete of '${name}'`, "crash");
+    else showToast(`🗑️ '${name}' deleted`, "success");
+    await loadState();
+  } catch(e) { showToast("Backend offline", "error"); }
+}
+
+async function recoverFS() {
+  try {
+    const r = await fetch(`${API}/recover`, { method: "POST" });
+    const d = await r.json();
+    let msg = `🔄 Recovery: ${d.redone.length} redone, ${d.rolled_back.length} rolled back.`;
+    showToast(msg, "success");
+    const body = document.getElementById("stepsBody");
+    let html = `<div style="font-size:0.78rem;padding:8px 0">
+      <div style="color:var(--commit);font-weight:700;margin-bottom:8px">Recovery Complete</div>`;
+    if (d.redone.length) html += d.redone.map(x=>`<div style="color:var(--recover);margin-bottom:4px">✅ ${escHtml(x)}</div>`).join("");
+    if (d.rolled_back.length) html += d.rolled_back.map(x=>`<div style="color:var(--yellow);margin-bottom:4px">↩️ ${escHtml(x)}</div>`).join("");
+    if (!d.redone.length && !d.rolled_back.length) html += `<div style="color:var(--muted)">No incomplete transactions found.</div>`;
+    html += `</div>`;
+    body.innerHTML = html;
+    await loadState();
+  } catch(e) { showToast("Backend offline", "error"); }
+}
+
+async function resetFS() {
+  if (!confirm("Reset entire file system?")) return;
+  try {
+    await fetch(`${API}/reset`, { method: "POST" });
+    document.getElementById("stepsBody").innerHTML = "<div class='no-steps'>Perform an operation to see journaling steps…</div>";
+    showToast("🔃 File system reset", "success");
+    await loadState();
+  } catch(e) { showToast("Backend offline", "error"); }
+}
+
+// ── Helpers ──
+function escHtml(s) {
+  if (!s) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+let toastTimer;
+function showToast(msg, type="info") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.className = ""; }, 3200);
+}
+
+// ── Init ──
+loadState();
+setInterval(loadState, 3000);
+</script>
+</body>
+</html>
